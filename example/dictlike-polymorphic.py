@@ -28,7 +28,34 @@ from sqlalchemy import event
 from sqlalchemy import literal_column
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.interfaces import PropComparator
-from .dictlike import ProxiedDictMixin
+
+
+class ProxiedDictMixin(object):
+    """Adds obj[key] access to a mapped class.
+
+    This class basically proxies dictionary access to an attribute
+    called ``_proxied``.  The class which inherits this class
+    should have an attribute called ``_proxied`` which points to a dictionary.
+
+    """
+
+    def __len__(self):
+        return len(self._proxied)
+
+    def __iter__(self):
+        return iter(self._proxied)
+
+    def __getitem__(self, key):
+        return self._proxied[key]
+
+    def __contains__(self, key):
+        return key in self._proxied
+
+    def __setitem__(self, key, value):
+        self._proxied[key] = value
+
+    def __delitem__(self, key):
+        del self._proxied[key]
 
 
 class PolymorphicVerticalProperty(object):
@@ -75,15 +102,17 @@ class PolymorphicVerticalProperty(object):
 
         def _case(self):
             pairs = set(self.cls.type_map.values())
+
             whens = [
                 (
-                    literal_column("'%s'" % discriminator),
+                    literal_column(f"'{discriminator}'"),
                     cast(getattr(self.cls, attribute), String),
                 )
                 for attribute, discriminator in pairs
                 if attribute is not None
             ]
-            return case(whens, self.cls.type, null())
+
+            return case(whens, value=self.cls.type, else_=null())
 
         def __eq__(self, other):
             return self._case() == cast(other, String)
@@ -102,16 +131,15 @@ def on_new_class(mapper, cls_):
     """Look for Column objects with type info in them, and work up
     a lookup table."""
 
-    info_dict = {}
-    info_dict[type(None)] = (None, "none")
-    info_dict["none"] = (None, "none")
+    info_dict = {
+        type(None): (None, "none"),
+        "none": (None, "none")}
 
-    for k in mapper.c.keys():
-        col = mapper.c[k]
+    for k, col in mapper.c.items():
         if "type" in col.info:
             python_type, discriminator = col.info["type"]
-            info_dict[python_type] = (k, discriminator)
-            info_dict[discriminator] = (k, discriminator)
+            info_dict[python_type] = \
+                info_dict[discriminator] = (k, discriminator)
     cls_.type_map = info_dict
 
 
@@ -138,6 +166,7 @@ if __name__ == "__main__":
 
     Base = declarative_base()
 
+
     class AnimalFact(PolymorphicVerticalProperty, Base):
         """A fact about an animal."""
 
@@ -152,6 +181,7 @@ if __name__ == "__main__":
         int_value = Column(Integer, info={"type": (int, "integer")})
         char_value = Column(UnicodeText, info={"type": (str, "string")})
         boolean_value = Column(Boolean, info={"type": (bool, "boolean")})
+
 
     class Animal(ProxiedDictMixin, Base):
         """an Animal"""
@@ -180,6 +210,7 @@ if __name__ == "__main__":
         @classmethod
         def with_characteristic(self, key, value):
             return self.facts.any(key=key, value=value)
+
 
     engine = create_engine("sqlite://", echo=True)
 
