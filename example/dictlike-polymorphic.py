@@ -29,6 +29,8 @@ from sqlalchemy import literal_column
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm.interfaces import PropComparator
 
+import datetime as dt
+
 
 class ProxiedDictMixin(object):
     """Adds obj[key] access to a mapped class.
@@ -100,25 +102,32 @@ class PolymorphicVerticalProperty(object):
         def __init__(self, cls):
             self.cls = cls
 
-        def _case(self):
-            pairs = set(self.cls.type_map.values())
-
-            whens = [
-                (
-                    literal_column(f"'{discriminator}'"),
-                    cast(getattr(self.cls, attribute), String),
-                )
-                for attribute, discriminator in pairs
-                if attribute is not None
-            ]
-
-            return case(whens, value=self.cls.type, else_=null())
+        def _fieldname(self, py_type):
+            return self.cls.type_map[py_type][0]
 
         def __eq__(self, other):
-            return self._case() == cast(other, String)
+            fieldname = self._fieldname(type(other))
+            return literal_column(fieldname) == other
 
         def __ne__(self, other):
-            return self._case() != cast(other, String)
+            fieldname = self._fieldname(type(other))
+            return literal_column(fieldname) != other
+
+        def __lt__(self, other):
+            fieldname = self._fieldname(type(other))
+            return literal_column(fieldname) < other
+
+        def __gt__(self, other):
+            fieldname = self._fieldname(type(other))
+            return literal_column(fieldname) > other
+
+        def __le__(self, other):
+            fieldname = self._fieldname(type(other))
+            return literal_column(fieldname) <= other
+
+        def __ge__(self, other):
+            fieldname = self._fieldname(type(other))
+            return literal_column(fieldname) >= other
 
     def __repr__(self):
         return "<%s %r=%r>" % (self.__class__.__name__, self.key, self.value)
@@ -133,7 +142,8 @@ def on_new_class(mapper, cls_):
 
     info_dict = {
         type(None): (None, "none"),
-        "none": (None, "none")}
+        "none": (None, "none")
+    }
 
     for k, col in mapper.c.items():
         if "type" in col.info:
@@ -154,6 +164,7 @@ if __name__ == "__main__":
         or_,
         String,
         Boolean,
+        DateTime,
         cast,
         null,
         case,
@@ -181,6 +192,7 @@ if __name__ == "__main__":
         int_value = Column(Integer, info={"type": (int, "integer")})
         char_value = Column(UnicodeText, info={"type": (str, "string")})
         boolean_value = Column(Boolean, info={"type": (bool, "boolean")})
+        datetime_value = Column(DateTime, info={"type": (dt.datetime, "datetime")})
 
 
     class Animal(ProxiedDictMixin, Base):
@@ -212,7 +224,8 @@ if __name__ == "__main__":
             return self.facts.any(key=key, value=value)
 
 
-    engine = create_engine("sqlite://", echo=True)
+    #engine = create_engine("sqlite://", echo=True)
+    engine = create_engine("sqlite://", echo=False)
 
     Base.metadata.create_all(engine)
     session = Session(engine)
@@ -241,9 +254,10 @@ if __name__ == "__main__":
     session.add(marten)
 
     shrew = Animal("shrew")
-    shrew["cuteness"] = 5
+    shrew["cuteness"] = 4
     shrew["weasel-like"] = False
     shrew["poisonous"] = True
+    shrew["creation"] = dt.datetime.now()
 
     session.add(shrew)
     session.commit()
@@ -275,3 +289,13 @@ if __name__ == "__main__":
 
     q = session.query(Animal).filter(Animal.facts.any(AnimalFact.value == 5))
     print("any animal with a .value of 5", q.all())
+
+    q = session.query(Animal).filter(Animal.facts.any(
+        and_(AnimalFact.key == "cuteness", AnimalFact.value < 5)
+    ))
+    print("any animal with a .value of <5", q.all())
+
+    q = session.query(Animal).filter(Animal.facts.any(
+        and_(AnimalFact.key == "creation", AnimalFact.value <= dt.datetime.now())
+    ))
+    print("any animal with a creation of <now", q.all())
