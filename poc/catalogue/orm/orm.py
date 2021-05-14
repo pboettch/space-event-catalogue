@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, DateTime, ForeignKey, Unicode, UnicodeText, Boolean, String
+from sqlalchemy import Column, Integer, DateTime, ForeignKey, Unicode, UnicodeText, Boolean, Table, String
 from sqlalchemy import create_engine, event, literal_column, case, cast, null
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from sqlalchemy.orm.collections import attribute_mapped_collection
@@ -10,13 +10,13 @@ import datetime as dt
 
 import json
 
-
 Base = declarative_base()
 
 
-class CatalogueEngine:
+class Backend:
     def __init__(self, url: str):
-        self.engine = create_engine(url, echo=True)
+        # self.engine = create_engine(url, echo=True)
+        self.engine = create_engine(url)
         self.session = sessionmaker(bind=self.engine)
         Base.metadata.create_all(self.engine)
 
@@ -27,7 +27,6 @@ class ProxiedDictMixin(object):
     This class basically proxies dictionary access to an attribute
     called ``_proxied``.  The class which inherits this class
     should have an attribute called ``_proxied`` which points to a dictionary.
-
     """
 
     def __len__(self):
@@ -145,14 +144,61 @@ def on_new_class(mapper, cls_):
     cls_.type_map = info_dict
 
 
-class EventsKeyValue(PolymorphicVerticalProperty, Base):
+event_in_catalogue_association_table = \
+    Table('event_in_catalogue', Base.metadata,
+          Column('event_id', Integer, ForeignKey('events.id')),
+          Column('catalogue_id', Integer, ForeignKey('catalogues.id')))
+
+
+class Event(ProxiedDictMixin, Base):
+    __tablename__ = 'events'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    uuid = Column(String(36), index=True, nullable=False)
+
+    start = Column(DateTime, nullable=False)
+    end = Column(DateTime, nullable=False)
+    author = Column(UnicodeText, nullable=False)
+
+    trashed = Column(Boolean, default=False)
+
+    attributes = relationship(
+        "EventAttributes", collection_class=attribute_mapped_collection("key")
+    )
+
+    catalogues = relationship("Catalogue",
+                              back_populates="events",
+                              secondary=event_in_catalogue_association_table)
+
+    _proxied = association_proxy(
+        "attributes",
+        "value",
+        creator=lambda key, value: EventAttributes(key=key, value=value),
+    )
+
+    def __init__(self, start, end, author, uuid):
+        self.start = start
+        self.end = end
+        self.author = author
+        self.uuid = uuid
+
+    def __repr__(self):
+        return f'Event({self.id}: {self.start}, {self.end}, {self.author}), meta=' + self._proxied.__repr__()
+
+    @classmethod
+    def with_characteristic(cls, key, value):
+        return cls.attributes.any(key=key, value=value)
+
+
+class EventAttributes(PolymorphicVerticalProperty, Base):
     """Meta-data (key-value-store) for an event."""
 
-    __tablename__ = "events_metadata"
+    __tablename__ = "events_attributes"
 
     event_id = Column(ForeignKey("events.id"), primary_key=True)
     key = Column(Unicode(64), primary_key=True)
-    type = Column(Unicode(16))
+    type = Column(Unicode(16), nullable=False)
 
     int_value = Column(Integer, info={"type": (int, "integer")})
     char_value = Column(UnicodeText, info={"type": (str, "string")})
@@ -161,34 +207,53 @@ class EventsKeyValue(PolymorphicVerticalProperty, Base):
     float_value = Column(DateTime, info={"type": (float, "float")})
 
 
-class Event(ProxiedDictMixin, Base):
-    __tablename__ = 'events'
+class Catalogue(ProxiedDictMixin, Base):
+    __tablename__ = 'catalogues'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
 
-    start = Column(DateTime)
-    end = Column(DateTime)
-    author = Column(UnicodeText)
+    name = Column(UnicodeText, nullable=False)
+    author = Column(UnicodeText, nullable=False)
 
-    kv_store = relationship(
-        "EventsKeyValue", collection_class=attribute_mapped_collection("key")
+    trashed = Column(Boolean, default=False)
+
+    attributes = relationship(
+        "CatalogueAttributes", collection_class=attribute_mapped_collection("key")
     )
+
+    events = relationship("Event",
+                          back_populates="catalogues",
+                          secondary=event_in_catalogue_association_table)
 
     _proxied = association_proxy(
-        "kv_store",
+        "attributes",
         "value",
-        creator=lambda key, value: EventsKeyValue(key=key, value=value),
+        creator=lambda key, value: CatalogueAttributes(key=key, value=value),
     )
 
-    def __init__(self, start, end, author):
-        self.start = start
-        self.end = end
+    def __init__(self, name: str, author: str):
+        self.name = name
         self.author = author
 
     def __repr__(self):
-        # return
-        return f'Event({self.start}, {self.end}, {self.author}), meta=' + self._proxied.__repr__()
+        return f'Catalogue({self.id}: {self.name}, {self.author}, {self.trashed}), attrs=' + self._proxied.__repr__()
 
     @classmethod
     def with_characteristic(cls, key, value):
-        return cls.kv_store.any(key=key, value=value)
+        return cls.attributes.any(key=key, value=value)
+
+
+class CatalogueAttributes(PolymorphicVerticalProperty, Base):
+    """Meta-data (key-value-store) for a catalogue."""
+
+    __tablename__ = "catalogues_attributes"
+
+    event_id = Column(ForeignKey("catalogues.id"), primary_key=True)
+    key = Column(Unicode(64), primary_key=True)
+    type = Column(Unicode(16))
+
+    int_value = Column(Integer, info={"type": (int, "integer")})
+    char_value = Column(UnicodeText, info={"type": (str, "string")})
+    boolean_value = Column(Boolean, info={"type": (bool, "boolean")})
+    datetime_value = Column(DateTime, info={"type": (dt.datetime, "datetime")})
+    float_value = Column(DateTime, info={"type": (float, "float")})

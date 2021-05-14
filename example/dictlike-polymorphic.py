@@ -169,6 +169,7 @@ if __name__ == "__main__":
         null,
         case,
         create_engine,
+        Table,
     )
     from sqlalchemy.orm import relationship, Session
     from sqlalchemy.orm.collections import attribute_mapped_collection
@@ -177,6 +178,10 @@ if __name__ == "__main__":
 
     Base = declarative_base()
 
+    event_in_catalogue_association_table = \
+        Table('animal_in_category', Base.metadata,
+              Column('animal_id', Integer, ForeignKey('animal.id')),
+              Column('category_id', Integer, ForeignKey('category.id')))
 
     class AnimalFact(PolymorphicVerticalProperty, Base):
         """A fact about an animal."""
@@ -194,7 +199,6 @@ if __name__ == "__main__":
         boolean_value = Column(Boolean, info={"type": (bool, "boolean")})
         datetime_value = Column(DateTime, info={"type": (dt.datetime, "datetime")})
 
-
     class Animal(ProxiedDictMixin, Base):
         """an Animal"""
 
@@ -206,6 +210,10 @@ if __name__ == "__main__":
         facts = relationship(
             "AnimalFact", collection_class=attribute_mapped_collection("key")
         )
+
+        categories = relationship("Category",
+                                  back_populates="animals",
+                                  secondary=event_in_catalogue_association_table)
 
         _proxied = association_proxy(
             "facts",
@@ -224,16 +232,65 @@ if __name__ == "__main__":
             return self.facts.any(key=key, value=value)
 
 
-    #engine = create_engine("sqlite://", echo=True)
-    engine = create_engine("sqlite://", echo=False)
+    class Category(ProxiedDictMixin, Base):
+        __tablename__ = "category"
+
+        id = Column(Integer, primary_key=True)
+        name = Column(Unicode(100))
+
+        facts = relationship(
+            "CategoryFact", collection_class=attribute_mapped_collection("key")
+        )
+
+        animals = relationship("Animal",
+                               back_populates="categories",
+                               secondary=event_in_catalogue_association_table)
+
+        _proxied = association_proxy(
+            "facts",
+            "value",
+            creator=lambda key, value: CategoryFact(key=key, value=value),
+        )
+
+        def __init__(self, name):
+            self.name = name
+
+        @classmethod
+        def with_characteristic(self, key, value):
+            return self.facts.any(key=key, value=value)
+
+
+    class CategoryFact(PolymorphicVerticalProperty, Base):
+        """A fact about a category."""
+
+        __tablename__ = "category_fact"
+
+        category_id = Column(ForeignKey("category.id"), primary_key=True)
+        key = Column(Unicode(64), primary_key=True)
+        type = Column(Unicode(16))
+
+        # add information about storage for different types
+        # in the info dictionary of Columns
+        int_value = Column(Integer, info={"type": (int, "integer")})
+        char_value = Column(UnicodeText, info={"type": (str, "string")})
+        boolean_value = Column(Boolean, info={"type": (bool, "boolean")})
+        datetime_value = Column(DateTime, info={"type": (dt.datetime, "datetime")})
+
+
+    # engine = create_engine("sqlite://", echo=True)
+    engine = create_engine("sqlite:///file.db", echo=False)
 
     Base.metadata.create_all(engine)
     session = Session(engine)
+
+    category = Category("Category1")
+    category['creator'] = "Patrick"
 
     stoat = Animal("stoat")
     stoat["color"] = "red"
     stoat["cuteness"] = 7
     stoat["weasel-like"] = True
+    stoat.categories.append(category)
 
     session.add(stoat)
     session.commit()

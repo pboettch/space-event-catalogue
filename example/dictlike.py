@@ -67,6 +67,7 @@ if __name__ == "__main__":
         UnicodeText,
         and_,
         create_engine,
+        Table,
     )
     from sqlalchemy.orm import relationship, Session
     from sqlalchemy.orm.collections import attribute_mapped_collection
@@ -86,6 +87,12 @@ if __name__ == "__main__":
         value = Column(UnicodeText)
 
 
+    event_in_catalogue_association_table = \
+        Table('animal_in_category', Base.metadata,
+              Column('animal_id', Integer, ForeignKey('animal.id')),
+              Column('category_id', Integer, ForeignKey('category.id')))
+
+
     class Animal(ProxiedDictMixin, Base):
         """an Animal"""
 
@@ -97,6 +104,10 @@ if __name__ == "__main__":
         facts = relationship(
             "AnimalFact", collection_class=attribute_mapped_collection("key")
         )
+
+        categories = relationship("Category",
+                                  back_populates="animals",
+                                  secondary=event_in_catalogue_association_table)
 
         _proxied = association_proxy(
             "facts",
@@ -115,14 +126,31 @@ if __name__ == "__main__":
             return cls.facts.any(key=key, value=value)
 
 
+    class Category(Base):
+        __tablename__ = "category"
+
+        id = Column(Integer, primary_key=True)
+        name = Column(Unicode(100))
+
+        animals = relationship("Animal",
+                               back_populates="categories",
+                               secondary=event_in_catalogue_association_table)
+
+        def __init__(self, name):
+            self.name = name
+
+
     engine = create_engine("sqlite:///file.db")
     Base.metadata.create_all(engine)
 
     session = Session(bind=engine)
 
+    category = Category("Category1")
+
     stoat = Animal("stoat")
     stoat["color"] = "reddish"
     stoat["cuteness"] = "somewhat"
+    stoat.categories.append(category)
 
     # dict-like assignment transparently creates entries in the
     # stoat.facts collection:
