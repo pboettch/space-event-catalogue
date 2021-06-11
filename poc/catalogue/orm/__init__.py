@@ -1,7 +1,7 @@
 from . import orm
 
 from .. import Event, Catalogue
-from ..filter import Predicate
+from ..filter import Predicate, Comparison, Field
 
 from pathlib import Path
 
@@ -90,12 +90,19 @@ class _Backend:
 
         return catalogues
 
-    def get_events(self, base: Union[Catalogue, Predicate] = None) -> List[Event]:
+    def get_events(self, base: Catalogue = None) -> List[Event]:
         if base:
             if isinstance(base, Catalogue):
-                q = self.session.query(orm.Event).filter(orm.Event.catalogues.any(id=base._backend_entity.id))
-            elif isinstance(base, Predicate):
-                raise AttributeError('Predicates not yet supported.')
+                if base.predicate:
+                    pred = base.predicate
+                    if isinstance(pred, Comparison):
+                        print(pred._op, pred._lhs.value, pred._rhs)
+                        f = getattr(orm.Event, pred._lhs.value) == pred._rhs
+
+
+                        q = self.session.query(orm.Event).filter(f)
+                else:
+                    q = self.session.query(orm.Event).filter(orm.Event.catalogues.any(id=base._backend_entity.id))
             else:
                 raise AttributeError('Invalid instance of given base object.')
         else:

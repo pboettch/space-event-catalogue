@@ -14,7 +14,7 @@ def get_start_end():
 if __name__ == "__main__":
 
     print("# 1 create event collection")
-    if 1:
+    if 0:
         events = []
         for i in range(100):  # generate events
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
         save(events)
 
     print("2 batch edit of event list")
-    if 1:
+    if 0:
         print('# get all event and work on the first 5')
         events = get_events()[:5]
 
@@ -62,7 +62,7 @@ if __name__ == "__main__":
             print('event:', e.start)
 
     print('# 3 add event(s) to new catalogue')
-    if 1:
+    if 0:
         catalogue = Catalogue("New Catalogue", "Patrick",
                               notes="Catalogue containing the first 10 events",
                               version=1)
@@ -77,7 +77,7 @@ if __name__ == "__main__":
             print('event:', e.start)
 
     print('# 4 remove event(s) from catalogue')
-    if 1:
+    if 0:
         catalogue = get_catalogues()[0]
 
         events = get_events(catalogue)
@@ -95,12 +95,17 @@ if __name__ == "__main__":
 
 
     print("# 5 use predicates - SmartCatalogue")
-    if 1:
+    if 0:
         catalogue = Catalogue('SmartCatalogue Author=Patrick', 'Patrick',
                               predicate=Comparison('==', Field('author'), 'Patrick'))
         save(catalogue)
 
+    if 1:
         catalogue = get_catalogues()[-1]
         print(catalogue.predicate)
+
+        for e in get_events(catalogue):
+            print(e)
+
 
     exit(1)
