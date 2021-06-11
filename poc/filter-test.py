@@ -1,39 +1,30 @@
-from catalogue import get_catalogues, get_events, save, Event, Catalogue
+from catalogue import Event, Catalogue
+from catalogue.api import get_catalogues, get_events
 from catalogue.filter import Comparison, All, Field, Attribute, Not, Predicate, Any
 
 import datetime as dt
 import datetime
-
-class Filter:
-    def __init__(self, condition: Predicate):
-        self._condition = condition
-
-    def __repr__(self):
-        return self._condition.__repr__()
+import pickle
 
 
 if __name__ == "__main__":
     condition_all = All(Comparison('>=', Field('start'), dt.datetime.now()),
                         Comparison('<=', Field('end'), dt.datetime.now()))
 
-    f = Filter(condition_all)
-    print(f)
+    print(condition_all)
 
     condition_author = Any(Comparison('==', Attribute('author'), "Patrick"),
                            Comparison('==', Attribute('author'), "Alexis"))
-    f = Filter(condition_author)
-    print(f)
+    print(condition_author)
 
-    cond = All(condition_all, condition_author)
+    cond = Not(All(condition_all, condition_author))
 
-    f = Filter(cond)
-    print(f)
+    pickled = pickle.dumps(cond, protocol=3)
 
-    r = repr(cond)
+    cond2 = pickle.loads(pickled)
 
-    cond2 = eval(r)
+    print(repr(cond) == repr(cond2))
 
-    print(r == repr(cond2))
-
+    events = get_events(condition_author)
 
 

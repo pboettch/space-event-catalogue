@@ -1,4 +1,6 @@
-from catalogue import get_catalogues, get_events, save, Event, Catalogue
+from catalogue import Event, Catalogue
+from catalogue.api import get_catalogues, get_events, save
+from catalogue.filter import Comparison, Field
 
 import random
 import datetime as dt
@@ -91,12 +93,14 @@ if __name__ == "__main__":
         for e in events:
             print('event:', e.start)
 
-    exit(1)
 
-    # And(
-    #     And(
-    #         GreaterThan('start', dt.datetime()),
-    #         LessThan('end', dt.datetime())
-    #     ),
-    #     Or(Equal('mission', 'mms1'), Equal('mission', 'mms2'))
-    # )
+    print("# 5 use predicates - SmartCatalogue")
+    if 1:
+        catalogue = Catalogue('SmartCatalogue Author=Patrick', 'Patrick',
+                              predicate=Comparison('==', Field('author'), 'Patrick'))
+        save(catalogue)
+
+        catalogue = get_catalogues()[-1]
+        print(catalogue.predicate)
+
+    exit(1)

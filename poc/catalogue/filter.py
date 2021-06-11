@@ -1,5 +1,5 @@
 import datetime as dt
-from typing import List, Union, Literal
+from typing import Union, Literal
 
 
 class Field:
@@ -49,7 +49,7 @@ class Match(Predicate):
 
 
 class Not(Predicate):
-    def __init__(self, operand: Predicate):
+    def __init__(self, operand: "Predicate"):
         self._operand = operand
 
     def __repr__(self):
@@ -65,7 +65,7 @@ class Has(Predicate):
 
 
 class All(Predicate):
-    def __init__(self, *args: List[Predicate]):
+    def __init__(self, *args: Predicate):
         self._predicates = args
 
     def __repr__(self):
@@ -73,7 +73,7 @@ class All(Predicate):
 
 
 class Any(Predicate):
-    def __init__(self, *args: List[Predicate]):
+    def __init__(self, *args: Predicate):
         self._predicates = args
 
     def __repr__(self):

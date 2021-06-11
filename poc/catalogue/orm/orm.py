@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, DateTime, ForeignKey, Unicode, UnicodeText, Boolean, Table, String
-from sqlalchemy import create_engine, event, literal_column, case, cast, null
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy import Column, Integer, DateTime, ForeignKey, Unicode, UnicodeText, Boolean, Table, String, LargeBinary
+from sqlalchemy import event, literal_column
+from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.orm.collections import attribute_mapped_collection
 from sqlalchemy.orm.interfaces import PropComparator
 from sqlalchemy.ext.associationproxy import association_proxy
@@ -11,14 +11,6 @@ import datetime as dt
 import json
 
 Base = declarative_base()
-
-
-class Backend:
-    def __init__(self, url: str):
-        # self.engine = create_engine(url, echo=True)
-        self.engine = create_engine(url)
-        self.session = sessionmaker(bind=self.engine)
-        Base.metadata.create_all(self.engine)
 
 
 class ProxiedDictMixin(object):
@@ -214,6 +206,7 @@ class Catalogue(ProxiedDictMixin, Base):
 
     name = Column(UnicodeText, nullable=False)
     author = Column(UnicodeText, nullable=False)
+    predicate = Column(LargeBinary, nullable=True)
 
     trashed = Column(Boolean, default=False)
 
@@ -231,9 +224,10 @@ class Catalogue(ProxiedDictMixin, Base):
         creator=lambda key, value: CatalogueAttributes(key=key, value=value),
     )
 
-    def __init__(self, name: str, author: str):
+    def __init__(self, name: str, author: str, predicate: bytes):
         self.name = name
         self.author = author
+        self.predicate = predicate
 
     def __repr__(self):
         return f'Catalogue({self.id}: {self.name}, {self.author}, {self.trashed}), attrs=' + self._proxied.__repr__()
