@@ -112,6 +112,9 @@ class PolymorphicVerticalProperty(object):
             fieldname = self._fieldname(type(other))
             return literal_column(fieldname) >= other
 
+        def regexp_match(self, pattern, flags=None):
+            return literal_column('char_value').regexp_match(pattern, flags)
+
     def __repr__(self):
         return f"<{self.__class__.__name__} {self.key}={self.value}>"
 
@@ -142,6 +145,22 @@ event_in_catalogue_association_table = \
           Column('catalogue_id', Integer, ForeignKey('catalogues.id')))
 
 
+class EventAttributes(PolymorphicVerticalProperty, Base):
+    """Meta-data (key-value-store) for an event."""
+
+    __tablename__ = "events_attributes"
+
+    event_id = Column(ForeignKey("events.id"), primary_key=True)
+    key = Column(Unicode(64), primary_key=True)
+    type = Column(Unicode(16), nullable=False)
+
+    int_value = Column(Integer, info={"type": (int, "integer")})
+    char_value = Column(UnicodeText, info={"type": (str, "string")})
+    boolean_value = Column(Boolean, info={"type": (bool, "boolean")})
+    datetime_value = Column(DateTime, info={"type": (dt.datetime, "datetime")})
+    float_value = Column(DateTime, info={"type": (float, "float")})
+
+
 class Event(ProxiedDictMixin, Base):
     __tablename__ = 'events'
 
@@ -169,6 +188,8 @@ class Event(ProxiedDictMixin, Base):
         creator=lambda key, value: EventAttributes(key=key, value=value),
     )
 
+    _attribute_class = EventAttributes
+
     def __init__(self, start, end, author, uuid):
         self.start = start
         self.end = end
@@ -183,14 +204,14 @@ class Event(ProxiedDictMixin, Base):
         return cls.attributes.any(key=key, value=value)
 
 
-class EventAttributes(PolymorphicVerticalProperty, Base):
-    """Meta-data (key-value-store) for an event."""
+class CatalogueAttributes(PolymorphicVerticalProperty, Base):
+    """Meta-data (key-value-store) for a catalogue."""
 
-    __tablename__ = "events_attributes"
+    __tablename__ = "catalogues_attributes"
 
-    event_id = Column(ForeignKey("events.id"), primary_key=True)
+    event_id = Column(ForeignKey("catalogues.id"), primary_key=True)
     key = Column(Unicode(64), primary_key=True)
-    type = Column(Unicode(16), nullable=False)
+    type = Column(Unicode(16))
 
     int_value = Column(Integer, info={"type": (int, "integer")})
     char_value = Column(UnicodeText, info={"type": (str, "string")})
@@ -224,6 +245,8 @@ class Catalogue(ProxiedDictMixin, Base):
         creator=lambda key, value: CatalogueAttributes(key=key, value=value),
     )
 
+    _attribute_class = CatalogueAttributes
+
     def __init__(self, name: str, author: str, predicate: bytes):
         self.name = name
         self.author = author
@@ -235,19 +258,3 @@ class Catalogue(ProxiedDictMixin, Base):
     @classmethod
     def with_characteristic(cls, key, value):
         return cls.attributes.any(key=key, value=value)
-
-
-class CatalogueAttributes(PolymorphicVerticalProperty, Base):
-    """Meta-data (key-value-store) for a catalogue."""
-
-    __tablename__ = "catalogues_attributes"
-
-    event_id = Column(ForeignKey("catalogues.id"), primary_key=True)
-    key = Column(Unicode(64), primary_key=True)
-    type = Column(Unicode(16))
-
-    int_value = Column(Integer, info={"type": (int, "integer")})
-    char_value = Column(UnicodeText, info={"type": (str, "string")})
-    boolean_value = Column(Boolean, info={"type": (bool, "boolean")})
-    datetime_value = Column(DateTime, info={"type": (dt.datetime, "datetime")})
-    float_value = Column(DateTime, info={"type": (float, "float")})

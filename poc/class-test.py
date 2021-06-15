@@ -1,14 +1,26 @@
 from catalogue import Event, Catalogue
 from catalogue.api import get_catalogues, get_events, save
-from catalogue.filter import Comparison, Field
+from catalogue.filter import Comparison, Field, Attribute, All, Not, Has, Match
 
 import random
 import datetime as dt
+
+from typing import List
 
 
 def get_start_end():
     return sorted([dt.datetime.fromtimestamp(random.randint(0, 2 ** 31)),
                    dt.datetime.fromtimestamp(random.randint(0, 2 ** 31))])
+
+
+def show_events(events: List[Event], info: str = None, count=10):
+    print("####", len(events), 'entries, displaying', count, ', ' + info if info is not None else '')
+    i = 1
+    for e in events:
+        if i >= count:
+            break
+        print(i, e)
+        i += 1
 
 
 if __name__ == "__main__":
@@ -46,7 +58,7 @@ if __name__ == "__main__":
 
         save(events)
 
-    print("2 batch edit of event list")
+    print("# 2 batch edit of event list")
     if 0:
         print('# get all event and work on the first 5')
         events = get_events()[:5]
@@ -93,19 +105,54 @@ if __name__ == "__main__":
         for e in events:
             print('event:', e.start)
 
-
-    print("# 5 use predicates - SmartCatalogue")
+    print("# 5 use predicates - create SmartCatalogue")
     if 0:
         catalogue = Catalogue('SmartCatalogue Author=Patrick', 'Patrick',
                               predicate=Comparison('==', Field('author'), 'Patrick'))
         save(catalogue)
 
+    print("# 5 use predicates - use to filter events")
     if 1:
         catalogue = get_catalogues()[-1]
-        print(catalogue.predicate)
+        show_events(get_events(catalogue), f'{catalogue.predicate}', count=10)
 
-        for e in get_events(catalogue):
-            print(e)
+        catalogue = Catalogue('SmartCatalogue Author=Patrick', 'Patrick',
+                              predicate=Comparison('>', Field('start'), dt.datetime.now()))
+        show_events(get_events(catalogue))
 
+        catalogue = Catalogue('SmartCatalogue', 'Patrick',
+                              predicate=Comparison('==', Attribute('mission'), 'mms2'))
+        show_events(get_events(catalogue), f'{catalogue.predicate}', count=0)
+
+        catalogue = Catalogue('SmartCatalogue', 'Patrick',
+                              predicate=Comparison('!=', Attribute('mission'), 'mms2'))
+        show_events(get_events(catalogue), f'{catalogue.predicate}', count=0)
+
+        catalogue = Catalogue('SmartCatalogue', 'Patrick',
+                              predicate=Not(Comparison('==', Attribute('mission'), 'mms2')))
+        show_events(get_events(catalogue), f'{catalogue.predicate}', count=0)
+
+        catalogue = Catalogue('SmartCatalogue', 'Patrick',
+                              predicate=Has(Attribute('moon_phase')))
+        show_events(get_events(catalogue), f'{catalogue.predicate}', count=10)
+
+        catalogue = Catalogue('SmartCatalogue', 'Patrick',
+                              predicate=Match(Attribute('moon_phase'), r'oon'))
+        show_events(get_events(catalogue), f'{catalogue.predicate}', count=10)
+
+        catalogue = Catalogue('SmartCatalogue', 'Patrick',
+                              predicate=Match(Field('author'), r'k$'))
+        show_events(get_events(catalogue), f'{catalogue.predicate}', count=10)
+
+        catalogue = Catalogue('SmartCatalogue', 'Patrick',
+                              predicate=All(Comparison('==', Attribute('mission'), 'mms2'),
+                                            Comparison('>', Field('start'), dt.datetime.now())))
+
+        show_events(get_events(catalogue), f'{catalogue.predicate}')
+
+        catalogue = Catalogue('SmartCatalogue', 'Patrick',
+                              predicate=All(Comparison('==', Attribute('mission'), 'mms2'),
+                                            Comparison('<=', Field('start'), dt.datetime.now())))
+        show_events(get_events(catalogue), f'{catalogue.predicate}')
 
     exit(1)

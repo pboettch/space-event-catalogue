@@ -1,16 +1,119 @@
 from . import orm
 
 from .. import Event, Catalogue
-from ..filter import Predicate, Comparison, Field
+from ..filter import Predicate, Comparison, Field, Attribute, All, Any, Match, Has, Not
 
 from pathlib import Path
 
 import pickle
+import datetime as dt
 
 from typing import Union, List
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, and_, or_, not_
 from sqlalchemy.orm import Session
+
+
+class PredicateVisitor:
+    def __init__(self, orm_class: Union[orm.Event, orm.Catalogue]):
+        self._orm_class = orm_class
+
+    def _visit_literal(self, operand: Union[str, int, bool, float, dt.datetime]):
+        if type(operand) not in [str, int, bool, float, dt.datetime]:
+            raise TypeError("Literal must be of allowed type.")
+        return operand
+
+    def _visit_comparison(self, comp: Comparison):
+        if not type(comp._lhs) in [Field, Attribute]:
+            raise AttributeError('Invalid LHS operand instance.')
+
+        rhs = self._visit_literal(comp._rhs)
+
+        if isinstance(comp._lhs, Field):
+            lhs = getattr(self._orm_class, comp._lhs.value)
+
+            if comp._op == '==':
+                return lhs == rhs
+            elif comp._op == '!=':
+                return lhs != rhs
+            elif comp._op == '<':
+                return lhs < rhs
+            elif comp._op == '<=':
+                return lhs <= rhs
+            elif comp._op == '>':
+                return lhs > rhs
+            elif comp._op == '>=':
+                return lhs >= rhs
+            else:
+                raise AttributeError('Invalid comparison operator.')
+
+        elif isinstance(comp._lhs, Attribute):
+            if comp._op == '==':
+                value_comp = self._orm_class._attribute_class.value == rhs
+            elif comp._op == '!=':
+                value_comp = self._orm_class._attribute_class.value != rhs
+            elif comp._op == '<':
+                value_comp = self._orm_class._attribute_class.value < rhs
+            elif comp._op == '<=':
+                value_comp = self._orm_class._attribute_class.value <= rhs
+            elif comp._op == '>':
+                value_comp = self._orm_class._attribute_class.value > rhs
+            elif comp._op == '>=':
+                value_comp = self._orm_class._attribute_class.value >= rhs
+            else:
+                raise AttributeError('Invalid comparison operator.')
+
+            return self._orm_class.attributes.any(
+                and_(self._orm_class._attribute_class.key == comp._lhs.value,
+                     value_comp))
+
+    def _visit_all(self, all_: All):
+        return and_(self.visit_predicate(pred) for pred in all_._predicates)
+
+    def _visit_any(self, any_: Any):
+        return or_(self.visit_predicate(pred) for pred in any_._predicates)
+
+    def _visit_not(self, not__: Not):
+        return not_(self.visit_predicate(not__._operand))
+
+    def _visit_has(self, has_: Has):
+        return self._orm_class.attributes.any(
+            and_(self._orm_class._attribute_class.key == has_._operand.value,
+                 self._orm_class._attribute_class.value is not None))
+
+    def _visit_match(self, match_: Match):
+        if not type(match_._lhs) in [Field, Attribute]:
+            raise AttributeError('Invalid LHS operand instance - expected Field or Attribute.')
+
+        if not type(match_._rhs) == str:
+            raise AttributeError('Invalid RHS operand instance - expected str.')
+
+        if isinstance(match_._lhs, Field):
+            lhs = getattr(self._orm_class, match_._lhs.value)
+            return lhs.regexp_match(match_._rhs)
+
+        elif isinstance(match_._lhs, Attribute):
+            print(self._orm_class._attribute_class.key)
+            print(self._orm_class._attribute_class.value)
+            return self._orm_class.attributes.any(
+                and_(self._orm_class._attribute_class.key == match_._lhs.value,
+                     self._orm_class._attribute_class.value.regexp_match(match_._rhs)))
+
+    def visit_predicate(self, pred: Predicate):
+        if isinstance(pred, Comparison):
+            return self._visit_comparison(pred)
+        elif isinstance(pred, All):
+            return self._visit_all(pred)
+        elif isinstance(pred, Any):
+            return self._visit_any(pred)
+        elif isinstance(pred, Not):
+            return self._visit_not(pred)
+        elif isinstance(pred, Has):
+            return self._visit_has(pred)
+        elif isinstance(pred, Match):
+            return self._visit_match(pred)
+        else:
+            raise NotImplemented('Unexpected predicated instance.')
 
 
 class _Backend:
@@ -47,7 +150,7 @@ class _Backend:
 
         for e in catalogue._added_events:
             if not hasattr(e, "_backend_entity"):
-                self.save_events(e)
+                self.save_event(e)
             entity.events.append(e._backend_entity)
 
         self.session.add(entity)
@@ -93,14 +196,9 @@ class _Backend:
     def get_events(self, base: Catalogue = None) -> List[Event]:
         if base:
             if isinstance(base, Catalogue):
-                if base.predicate:
-                    pred = base.predicate
-                    if isinstance(pred, Comparison):
-                        print(pred._op, pred._lhs.value, pred._rhs)
-                        f = getattr(orm.Event, pred._lhs.value) == pred._rhs
-
-
-                        q = self.session.query(orm.Event).filter(f)
+                if base.predicate:  # "smart catalogue"
+                    f = PredicateVisitor(orm.Event).visit_predicate(base.predicate)
+                    q = self.session.query(orm.Event).filter(f)
                 else:
                     q = self.session.query(orm.Event).filter(orm.Event.catalogues.any(id=base._backend_entity.id))
             else:

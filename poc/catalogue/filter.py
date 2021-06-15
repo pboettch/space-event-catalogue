@@ -45,7 +45,7 @@ class Match(Predicate):
         self._rhs = rhs
 
     def __repr__(self):
-        return f"Match({self._lhs}, {self._rhs})"
+        return f"Match({self._lhs}, {repr(self._rhs)})"
 
 
 class Not(Predicate):
