@@ -13,6 +13,8 @@ from typing import Union, List
 from sqlalchemy import create_engine, and_, or_, not_
 from sqlalchemy.orm import Session
 
+from operator import __eq__, __ne__, __ge__, __gt__, __le__, __lt__
+
 
 class PredicateVisitor:
     def __init__(self, orm_class: Union[orm.Event, orm.Catalogue]):
@@ -29,43 +31,25 @@ class PredicateVisitor:
 
         rhs = self._visit_literal(comp._rhs)
 
+        op_map = {
+            '==': __eq__,
+            '!=': __ne__,
+            '<': __lt__,
+            '<=': __le__,
+            '>': __gt__,
+            '>=': __ge__,
+        }
+        if comp._op not in op_map:
+            raise AttributeError('Invalid comparison operator.')
+
         if isinstance(comp._lhs, Field):
             lhs = getattr(self._orm_class, comp._lhs.value)
-
-            if comp._op == '==':
-                return lhs == rhs
-            elif comp._op == '!=':
-                return lhs != rhs
-            elif comp._op == '<':
-                return lhs < rhs
-            elif comp._op == '<=':
-                return lhs <= rhs
-            elif comp._op == '>':
-                return lhs > rhs
-            elif comp._op == '>=':
-                return lhs >= rhs
-            else:
-                raise AttributeError('Invalid comparison operator.')
+            return op_map[comp._op](lhs, rhs)
 
         elif isinstance(comp._lhs, Attribute):
-            if comp._op == '==':
-                value_comp = self._orm_class._attribute_class.value == rhs
-            elif comp._op == '!=':
-                value_comp = self._orm_class._attribute_class.value != rhs
-            elif comp._op == '<':
-                value_comp = self._orm_class._attribute_class.value < rhs
-            elif comp._op == '<=':
-                value_comp = self._orm_class._attribute_class.value <= rhs
-            elif comp._op == '>':
-                value_comp = self._orm_class._attribute_class.value > rhs
-            elif comp._op == '>=':
-                value_comp = self._orm_class._attribute_class.value >= rhs
-            else:
-                raise AttributeError('Invalid comparison operator.')
-
             return self._orm_class.attributes.any(
                 and_(self._orm_class._attribute_class.key == comp._lhs.value,
-                     value_comp))
+                     op_map[comp._op](self._orm_class._attribute_class.value, rhs)))
 
     def _visit_all(self, all_: All):
         return and_(self.visit_predicate(pred) for pred in all_._predicates)
@@ -93,8 +77,6 @@ class PredicateVisitor:
             return lhs.regexp_match(match_._rhs)
 
         elif isinstance(match_._lhs, Attribute):
-            print(self._orm_class._attribute_class.key)
-            print(self._orm_class._attribute_class.value)
             return self._orm_class.attributes.any(
                 and_(self._orm_class._attribute_class.key == match_._lhs.value,
                      self._orm_class._attribute_class.value.regexp_match(match_._rhs)))
